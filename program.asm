@@ -54,10 +54,14 @@ extern exit
 %define CY_OFF        20
 
 global main
+
 global generate_rand_nb
 global generate_a_triangle
 global generate_triangles_and_color
+
 global calculate_a_determinant_rect
+global calculate_all_determinant_rects
+
 
 section .bss
     display_name:	resq	1
@@ -240,79 +244,97 @@ calculate_a_determinant_rect:
     mov r10d, dword[r12 + 4] ; max y 
     mov r11d, dword[r12 + 4] ; min y
 
-    mov ebx, 0               ; Loop counter (EBX/BL)
+    mov ebx, 0               ; Loop counter (EBX)
     
-; for ebx=0; ebx < 2 (Iterates for points B and C)
-.loop:
-    cmp ebx, 2
-    jge .store
+    ; for ebx=0; ebx < 2 (Iterates for comparing with point B and C)
+    .loop:
+        cmp ebx, 2
+        jge .store
 
-    ; Calculate offset for the current point (A or B)
-    ; Offset calculation: (EBX + 1) * 8
-    mov ecx, ebx             ; ECX = loop counter (0 or 1)
-    inc ecx                  ; ECX = (1 or 2)
-    imul ecx, 8              ; ECX = offset (8 or 16)
+        ; Calculate offset for the current point (A or B)
+        ; Offset calculation: (EBX + 1) * 8
+        mov ecx, ebx             ; ECX = loop counter (0 or 1)
+        inc ecx                  ; ECX = (1 or 2)
+        imul ecx, 8              ; ECX = offset (8 or 16)
 
-    ; EDX = offset for Y (ECX + 4)
-    mov edx, ecx
-    add edx, 4
+        ; EDX = offset for Y (ECX + 4)
+        mov edx, ecx
+        add edx, 4
 
-    ; Compare Max X
-    cmp r8d, dword[r12 + rcx] ; Compare current max_x to next_x (offset in RCX)
-    jl .set_max_x
-    
-.cmp_min_x:
-    ; Compare Min X
-    cmp r9d, dword[r12 + rcx] ; Compare current min_x to next_x (offset in RCX)
-    jg .set_min_x
-    
-.cmp_max_y:
-    ; Compare Max Y
-    cmp r10d, dword[r12 + rdx] ; Compare current max_y to next_y (offset in RDX)
-    jl .set_max_y
-    
-.cmp_min_y:
-    ; Compare Min Y
-    cmp r11d, dword[r12 + rdx] 
-    jg .set_min_y
+        ; Compare Max X
+        cmp r8d, dword[r12 + rcx] ; Compare current max_x to next_x (offset in RCX)
+        jl .set_max_x
+        
+    .cmp_min_x:
+        ; Compare Min X
+        cmp r9d, dword[r12 + rcx] ; Compare current min_x to next_x (offset in RCX)
+        jg .set_min_x
+    .cmp_max_y:
+        ; Compare Max Y
+        cmp r10d, dword[r12 + rdx] ; Compare current max_y to next_y (offset in RDX)
+        jl .set_max_y     
+    .cmp_min_y:
+        ; Compare Min Y
+        cmp r11d, dword[r12 + rdx] 
+        jg .set_min_y
+    .continue:
+        inc ebx                  ; Increment counter
+        jmp .loop
 
-.continue:
-    inc ebx                  ; Increment counter
-    jmp .loop
+    .set_max_x:
+        mov r8d, dword[r12 + rcx] ; Set max_x
+        jmp .cmp_min_x
+    .set_min_x:
+        mov r9d, dword[r12 + rcx] ; Set min_x
+        jmp .cmp_max_y      
+    .set_max_y:
+        mov r10d, dword[r12 + rdx] ; Set max_y
+        jmp .cmp_min_y      
+    .set_min_y:
+        mov r11d, dword[r12 + rdx] ; Set min_y
+        jmp .continue
 
-.set_max_x:
-    mov r8d, dword[r12 + rcx] ; Set max_x
-    jmp .cmp_min_x
-    
-.set_min_x:
-    mov r9d, dword[r12 + rcx] ; Set min_x
-    jmp .cmp_max_y
-    
-.set_max_y:
-    mov r10d, dword[r12 + rdx] ; Set max_y
-    jmp .cmp_min_y
-    
-.set_min_y:
-    mov r11d, dword[r12 + rdx] ; Set min_y
-    jmp .continue
+    .store:
+        ; get base address of the rectangle in r12
+        mov rax, rdi
+        imul rax, REC_STRIDE
+        lea r12, [rectangle_coord_list + rax] 
 
-.store:
-    ; get base address of the rectangle in r12
-    mov rax, rdi
-    imul rax, REC_STRIDE
-    lea r12, [rectangle_coord_list + rax] 
+        ; store the results (r8d, r9d, r10d, r11d)
+        mov dword[r12 + 0], r8d   ; max_x
+        mov dword[r12 + 4], r9d   ; min_x
+        mov dword[r12 + 8], r10d  ; max_y
+        mov dword[r12 + 12], r11d ; min_y
 
-    ; store the results (r8d, r9d, r10d, r11d)
-    mov dword[r12 + 0], r8d   ; max_x
-    mov dword[r12 + 4], r9d   ; min_x
-    mov dword[r12 + 8], r10d  ; max_y
-    mov dword[r12 + 12], r11d ; min_y
+        pop rdx
+        pop rcx
+        pop r12
+        pop rbx
+        ret
 
-    pop rdx
-    pop rcx
-    pop r12
-    pop rbx
-    ret
+; =============================================================
+; FUNCTION 2: calculate determinant rectangle of all triangles, put into rectangle_coord_list
+; =============================================================
+calculate_all_determinant_rects:
+    push rbx
+    push r12
+
+    xor ebx, ebx ; i=0
+
+    .loop:
+        cmp ebx, NB_TRIANGLES
+        jge  .end
+
+        mov rdi, rbx
+        call calculate_a_determinant_rect
+
+        inc ebx
+        jmp .loop
+
+    .end:
+        pop r12
+        pop rbx
+        ret
 ; =============================================================
 ; END OF MODULE MINH CAT
 ; =============================================================
