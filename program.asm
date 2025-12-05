@@ -52,6 +52,7 @@ global generate_rand_color
 ; MINH CAT'S FUNCTIONS
 ;============================
 global calculate_a_determinant_rect
+global calculate_vector_coord
 
 
 section .bss
@@ -241,6 +242,18 @@ calculate_a_determinant_rect:
         pop rbx
         ret
 
+; =============================================================
+; FUNCTION 2: calculate x,y of a vector from 2 points
+; - input : rdi as Ax, rsi as Ay, rdx as Bx, rcx as By
+; - output : rax as ABx, rdx as ABy
+; =============================================================
+calculate_vector_coord:
+    mov rax, rdx
+    sub rax, rdi
+
+    mov rdx, rcx
+    sub rdx, rsi
+    
 ; =============================================================
 ; FUNCTION 2: check if the current triangle is direct or indirect
 ; - input : index of current triangle = rdi
