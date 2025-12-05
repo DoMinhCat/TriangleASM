@@ -249,6 +249,7 @@ mov rdi,qword[display_name]
 mov rsi,qword[window]
 call XMapWindow
 
+mov rdi,qword[display_name]
 mov rsi,qword[window]
 mov rdx,0
 mov rcx,0
