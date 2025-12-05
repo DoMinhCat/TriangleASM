@@ -11,13 +11,15 @@ extern XCreateGC
 extern XSetForeground
 extern XDrawLine
 extern XDrawPoint
+extern XDrawArc
 extern XFillArc
 extern XNextEvent
 
+; external functions from C stdio
+extern scanf
+extern printf
 extern exit
 
-; mask which events we want to receive
-%define	ExposureMask		32768
 %define	StructureNotifyMask	131072
 %define KeyPressMask		1
 %define ButtonPressMask		4
@@ -27,21 +29,23 @@ extern exit
 %define Expose			12
 %define ConfigureNotify		22
 %define CreateNotify 16
+
 %define QWORD	8
 %define DWORD	4
 %define WORD	2
 %define BYTE	1
+%define NBTRI	1
+%define BYTE	1
+%define	WIDTH 400	; largeur en pixels de la fenêtre
+%define HEIGHT 400	; hauteur en pixels de la fenêtre
 
-; ============================
-;  CONSTANTES PACO
-; ============================
-%define NB_TRIANGLES  5       ; nombre de triangles générés
-%define WIN_W         400     ; largeur de la fenêtre
-%define WIN_H         400     ; hauteur de la fenêtre
+%define NB_TRIANGLES  5 ; total num of triangles
 
 ; taille en bytes d'un triangle : 6 * 4 (Ax,Ay,Bx,By,Cx,Cy)
-%define TRI_STRIDE    24
+%define TRI_STRIDE  24
+%define REC_STRIDE  16 ; 4*4 (min/max x/y)
 
+; offset of index to get coords of a triangle in triangle_coord_list
 %define AX_OFF        0
 %define AY_OFF        4
 %define BX_OFF        8
@@ -49,77 +53,80 @@ extern exit
 %define CX_OFF        16
 %define CY_OFF        20
 
-
 global main
+global generate_rand_nb
+global generate_a_triangle
+global generate_triangles_and_color
+global calculate_a_determinant_rect
 
 section .bss
-display_name:	resq	1
-screen:			resd	1
-depth:         	resd	1
-connection:    	resd	1
-width:         	resd	1
-height:        	resd	1
-window:		resq	1
-gc:		resq	1
-    ; === Données Paco : triangles + couleurs ===
-    ; NB_TRIANGLES triangles * 6 coords (int32)
-    ; triangles[i] = Ax,Ay,Bx,By,Cx,Cy
-    triangles:      resd NB_TRIANGLES * 6
+    display_name:	resq	1
+    screen:			resd	1
+    depth:         	resd	1
+    connection:    	resd	1
+    width:         	resd	1
+    height:        	resd	1
+    window:		resq	1
+    gc:		resq	1
 
-    ; une couleur 0xRRGGBB par triangle (int32)
-    tri_colors:     resd NB_TRIANGLES
+    ; === Données Paco : triangles + couleurs ===
+    ; list of all triangles coordinates: 6 coords for each triangle (int32)
+    ; triangle_coord_list[i] = Ax,Ay,Bx,By,Cx,Cy
+    triangle_coord_list:     resd NB_TRIANGLES * 6
+    triangle_color_list:     resd NB_TRIANGLES ; list of colors for each triangle (int32)
+
+    ; Minh Cat's variables
+    rectangle_coord_list:   resd NB_TRIANGLES * 4 ; determinant rectangle - min_x, max_x, min_y, max_y for each triangle
+
 
 section .data
+    event:		times	24 dq 0
 
-event:		times	24 dq 0
-
-x1:	dd	0
-x2:	dd	0
-y1:	dd	0
-y2:	dd	0
-
+    x1:	dd	0
+    x2:	dd	0
+    y1:	dd	0
+    y2:	dd	0
 
 section .text
-	
+;============================
+;DEFINE FUNCTIONS HERE
+;============================
+
 ; =============================================================
 ; MODULE PACO : génération aléatoire des triangles + couleurs
 ; =============================================================
 
-    global rand_borne
-    global genere_un_triangle
-    global genere_triangles_et_couleurs
-
 ; =============================================================
-;  FONCTION 1 : rand_borne(max)
+;  FONCTION 1 : generate_rand_nb(max) || rand_borne of Paco
 ;  - utilise RDRAND
 ;  - vérifie CF = 1
-;  - renvoie un entier dans [0 ; max-1]
+;  - renvoie un entier dans [0 ; max-1] in rax
 ; =============================================================
-rand_borne:
+generate_rand_nb:
     push rbp
     mov  rbp, rsp
     push rbx
 
-.rand_retry:
-    rdrand rax
-    jnc .rand_retry      ; si CF = 0 → échec → retente
+    .retry:
+        rdrand rax
+        jnc .retry      ; si CF = 0 → échec → retente
 
-    mov  rbx, rdi        ; rdi = borne max
-    xor  rdx, rdx
-    div  rbx             ; (RDX:RAX / RBX) => reste dans RDX
+        mov  rbx, rdi        ; rdi = max value allowed for rand num
+        xor  rdx, rdx
+        div  rbx             ; (RDX:RAX / RBX) => reste dans RDX
 
-    mov  rax, rdx        ; on renvoie le reste modulo max
+        mov  rax, rdx        ; on renvoie le reste modulo max
 
-    pop  rbx
-    pop  rbp
-    ret
+        pop  rbx
+        pop  rbp
+        ret
 
 ; =============================================================
-;  FONCTION 2 : genere_un_triangle(index)
+;  FONCTION 2 : generate_a_triangle(index)
 ;  - génère Ax,Ay,Bx,By,Cx,Cy pour un triangle donné
 ;  - index = rdi
 ; =============================================================
-genere_un_triangle:
+generate_a_triangle:
     push rbp
     mov  rbp, rsp
     push rbx
@@ -127,39 +134,39 @@ genere_un_triangle:
 
     mov  rbx, rdi               ; i = index du triangle
 
-    ; base_ptr = triangles + i * TRI_STRIDE
+    ; base_ptr = triangle_coord_list + i * TRI_STRIDE
     mov  rax, rbx
     imul rax, TRI_STRIDE
-    lea  r12, [triangles + rax] ; r12 = pointeur du triangle
+    lea  r12, [triangle_coord_list + rax] ; r12 = pointeur du triangle
 
     ; ----- Ax -----
-    mov  rdi, WIN_W
-    call rand_borne
+    mov  rdi, WIDTH
+    call generate_rand_nb
     mov  dword [r12 + AX_OFF], eax
 
     ; ----- Ay -----
-    mov  rdi, WIN_H
-    call rand_borne
+    mov  rdi, HEIGHT
+    call generate_rand_nb
     mov  dword [r12 + AY_OFF], eax
 
     ; ----- Bx -----
-    mov  rdi, WIN_W
-    call rand_borne
+    mov  rdi, WIDTH
+    call generate_rand_nb
     mov  dword [r12 + BX_OFF], eax
 
     ; ----- By -----
-    mov  rdi, WIN_H
-    call rand_borne
+    mov  rdi, HEIGHT
+    call generate_rand_nb
     mov  dword [r12 + BY_OFF], eax
 
     ; ----- Cx -----
-    mov  rdi, WIN_W
-    call rand_borne
+    mov  rdi, WIDTH
+    call generate_rand_nb
     mov  dword [r12 + CX_OFF], eax
 
     ; ----- Cy -----
-    mov  rdi, WIN_H
-    call rand_borne
+    mov  rdi, HEIGHT
+    call generate_rand_nb
     mov  dword [r12 + CY_OFF], eax
 
     pop  r12
@@ -168,225 +175,266 @@ genere_un_triangle:
     ret
 
 ; =============================================================
-;  FONCTION 3 : genere_triangles_et_couleurs()
-;  - génère tous les triangles
-;  - attribue une couleur 0xRRGGBB à chacun
+;  FONCTION 3 : generate_triangles_and_color()
+;  - génère tous les coords des triangle 
+;  - attribue une couleur 0xRRGGBB à chacun stocké dans triangle_color_list
 ; =============================================================
-genere_triangles_et_couleurs:
+generate_triangles_and_color:
     push rbp
     mov  rbp, rsp
     push rbx
 
-    xor  ebx, ebx                ; i = 0
+    xor  ebx, ebx                ; initialize loop counter i = 0
 
-.paco_loop:
-    cmp  ebx, NB_TRIANGLES
-    jge  .fin
+    .paco_loop:
+        cmp  ebx, NB_TRIANGLES ; if i > NB_TRIANGLES => end
+        jge  .fin
 
-    ; --- Génération du triangle i ---
-    mov  rdi, rbx
-    call genere_un_triangle
+        ; --- Génération les coords triangle i ---
+        mov  rdi, rbx
+        call generate_a_triangle
 
-    ; --- Couleur aléatoire ---
-    mov  rdi, 0x1000000          ; 2^24 = 0x1000000
-    call rand_borne              ; rax ∈ [0 ; 0xFFFFFF]
+        ; --- Couleur aléatoire ---
+        mov  rdi, 0x1000000          ; 2^24 = 0x1000000
+        call generate_rand_nb        ; rax ∈ [0 ; 0xFFFFFF]
 
-    mov  edx, ebx
-    imul edx, 4                  ; offset = i*4
-    mov  dword [tri_colors + rdx], eax
+        mov  edx, ebx
+        imul edx, 4                  ; offset = i*4
+        mov  dword [triangle_color_list + rdx], eax ; store color in the list
 
-    inc  ebx
-    jmp  .paco_loop
+        inc  ebx
+        jmp  .paco_loop
 
-.fin:
-    pop  rbx
-    pop  rbp
+    .fin:
+        pop  rbx
+        pop  rbp
+        ret
+
+; =============================================================
+; END OF MODULE PACO
+; =============================================================
+
+; =============================================================
+; MODULE MINH CAT
+; =============================================================
+
+; =============================================================
+; FUNCTION 1: calculate determinant rectangle
+; - input : index = rdi
+; - output : r8d as max_x, r9d as min_x, r10d as max_y, r11d as min_y
+; =============================================================
+calculate_a_determinant_rect:
+    push rbx
+    push r12
+    push rcx             ; Save RCX for use as offset register
+    push rdx             ; Save RDX for use as offset register
+
+    ; Calculate base address of the triangle
+    mov rax, rdi
+    imul rax, TRI_STRIDE
+    lea r12, [triangle_coord_list + rax] 
+
+    ; init min/max using point A (Offset 0)
+    mov r8d, dword[r12 + 0]  ; max x 
+    mov r9d, dword[r12 + 0]  ; min x
+    mov r10d, dword[r12 + 4] ; max y 
+    mov r11d, dword[r12 + 4] ; min y
+
+    mov ebx, 0               ; Loop counter (EBX/BL)
+    
+; for ebx=0; ebx < 2 (Iterates for points B and C)
+.loop:
+    cmp ebx, 2
+    jge .store
+
+    ; Calculate offset for the current point (A or B)
+    ; Offset calculation: (EBX + 1) * 8
+    mov ecx, ebx             ; ECX = loop counter (0 or 1)
+    inc ecx                  ; ECX = (1 or 2)
+    imul ecx, 8              ; ECX = offset (8 or 16)
+
+    ; EDX = offset for Y (ECX + 4)
+    mov edx, ecx
+    add edx, 4
+
+    ; Compare Max X
+    cmp r8d, dword[r12 + rcx] ; Compare current max_x to next_x (offset in RCX)
+    jl .set_max_x
+    
+.cmp_min_x:
+    ; Compare Min X
+    cmp r9d, dword[r12 + rcx] ; Compare current min_x to next_x (offset in RCX)
+    jg .set_min_x
+    
+.cmp_max_y:
+    ; Compare Max Y
+    cmp r10d, dword[r12 + rdx] ; Compare current max_y to next_y (offset in RDX)
+    jl .set_max_y
+    
+.cmp_min_y:
+    ; Compare Min Y
+    cmp r11d, dword[r12 + rdx] 
+    jg .set_min_y
+
+.continue:
+    inc ebx                  ; Increment counter
+    jmp .loop
+
+.set_max_x:
+    mov r8d, dword[r12 + rcx] ; Set max_x
+    jmp .cmp_min_x
+    
+.set_min_x:
+    mov r9d, dword[r12 + rcx] ; Set min_x
+    jmp .cmp_max_y
+    
+.set_max_y:
+    mov r10d, dword[r12 + rdx] ; Set max_y
+    jmp .cmp_min_y
+    
+.set_min_y:
+    mov r11d, dword[r12 + rdx] ; Set min_y
+    jmp .continue
+
+.store:
+    ; get base address of the rectangle in r12
+    mov rax, rdi
+    imul rax, REC_STRIDE
+    lea r12, [rectangle_coord_list + rax] 
+
+    ; store the results (r8d, r9d, r10d, r11d)
+    mov dword[r12 + 0], r8d   ; max_x
+    mov dword[r12 + 4], r9d   ; min_x
+    mov dword[r12 + 8], r10d  ; max_y
+    mov dword[r12 + 12], r11d ; min_y
+
+    pop rdx
+    pop rcx
+    pop r12
+    pop rbx
     ret
+; =============================================================
+; END OF MODULE MINH CAT
+; =============================================================
 
-; ====== FIN MODULE PACO ======
-
-
-;##################################################
-;########### PROGRAMME PRINCIPAL ##################
-;##################################################
+;============================
+;END OF DEFINE FUNCTIONS
+;============================
 
 main:
-xor     rdi,rdi
-call    XOpenDisplay	; Création de display
-mov     qword[display_name],rax	; rax=nom du display
+    ; Sauvegarde du registre de base pour préparer les appels à printf
+    push    rbp
+    mov     rbp, rsp
+	
+    ; Récupère le nom du display par défaut (en passant NULL)
+    xor     rdi, rdi          ; rdi = 0 (NULL)
+    call    XDisplayName      ; Appel de la fonction XDisplayName
+    ; Vérifie si le display est valide
+    test    rax, rax          ; Teste si rax est NULL
+    jz      closeDisplay      ; Si NULL, ferme le display et quitte
 
-; display_name structure
-; screen = DefaultScreen(display_name);
-mov     rax,qword[display_name]
-mov     eax,dword[rax+0xe0]
-mov     dword[screen],eax
+    ; Ouvre le display par défaut
+    xor     rdi, rdi          ; rdi = 0 (NULL pour le display par défaut)
+    call    XOpenDisplay      ; Appel de XOpenDisplay
+    test    rax, rax          ; Vérifie si l'ouverture a réussi
+    jz      closeDisplay      ; Si échec, ferme le display et quitte
 
-; RootWindow(display, screen);
-mov rdi,qword[display_name]
-mov eax,dword[screen]
-mov esi,eax
-call XRootWindow
-mov rbx,rax
+    ; Stocke le display ouvert dans la variable globale display_name
+    mov     [display_name], rax
 
-mov rdi,qword[display_name]
-mov rsi,rbx
-mov rdx,10
-mov rcx,10
-mov r8,400	; largeur
-mov r9,400	; hauteur
-push 0xFFFFFF	; background  0xRRGGBB
-push 0x00FF00
-push 1
-call XCreateSimpleWindow
-mov qword[window],rax
+    ; Récupère la fenêtre racine (root window) du display
+    mov     rdi,qword[display_name]   ; Place le display dans rdi
+    mov     esi,dword[screen]         ; Place le numéro d'écran dans esi
+    call XRootWindow                ; Appel de XRootWindow pour obtenir la fenêtre racine
+    mov     rbx,rax               ; Stocke la root window dans rbx
 
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,131077 ;131072
-call XSelectInput
+    ; Création d'une fenêtre simple
+    mov     rdi,qword[display_name]   ; display
+    mov     rsi,rbx                   ; parent = root window
+    mov     rdx,10                    ; position x de la fenêtre
+    mov     rcx,10                    ; position y de la fenêtre
+    mov     r8,LARGEUR                ; largeur de la fenêtre
+    mov     r9,HAUTEUR           	; hauteur de la fenêtre
+    push 0x000000                     ; couleur du fond (noir, 0x000000)
+    push 0x00FF00                     ; couleur de fond (vert, 0x00FF00)
+    push 1                          ; épaisseur du bord
+    call XCreateSimpleWindow        ; Appel de XCreateSimpleWindow
+	add rsp,24
+	mov qword[window],rax           ; Stocke l'identifiant de la fenêtre créée dans window
 
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-call XMapWindow
+    ; Sélection des événements à écouter sur la fenêtre
+    mov rdi,qword[display_name]
+    mov rsi,qword[window]
+    mov rdx,131077                 ; Masque d'événements (ex. StructureNotifyMask + autres)
+    call XSelectInput
 
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,0
-mov rcx,0
-call XCreateGC
-mov qword[gc],rax
+    ; Affichage (mapping) de la fenêtre
+    mov rdi,qword[display_name]
+    mov rsi,qword[window]
+    call XMapWindow
 
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov rdx,0x000000	; Couleur du crayon
-call XSetForeground
+    ; Création du contexte graphique (GC) avec vérification d'erreur
+    mov rdi, qword[display_name]
+    test rdi, rdi                ; Vérifie que display n'est pas NULL
+    jz closeDisplay
 
-boucle: ; boucle de gestion des évènements
-mov rdi,qword[display_name]
-mov rsi,event
-call XNextEvent
+    mov rsi, qword[window]
+    test rsi, rsi                ; Vérifie que window n'est pas NULL
+    jz closeDisplay
 
-cmp dword[event],ConfigureNotify	; à l'apparition de la fenêtre
-je dessin							; on saute au label 'dessin'
+    xor rdx, rdx                 ; Aucun masque particulier
+    xor rcx, rcx                 ; Aucune valeur particulière
+    call XCreateGC               ; Appel de XCreateGC pour créer le contexte graphique
+    test rax, rax                ; Vérifie la création du GC
+    jz closeDisplay              ; Si échec, quitte
+    mov qword[gc], rax           ; Stocke le GC dans la variable gc
+	
+boucle: ; Boucle de gestion des événements
+    mov     rdi, qword[display_name]
+    cmp     rdi, 0              ; Vérifie que le display est toujours valide
+    je      closeDisplay        ; Si non, quitte
+    mov     rsi, event          ; Passe l'adresse de la structure d'événement
+    call    XNextEvent          ; Attend et récupère le prochain événement
 
-cmp dword[event],KeyPress			; Si on appuie sur une touche
-je closeDisplay						; on saute au label 'closeDisplay' qui ferme la fenêtre
-jmp flush
+    cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
+    je      dessin                        ; Passe à la phase de dessin
 
-;#########################################
-;#		DEBUT DE LA ZONE DE DESSIN		 #
-;#########################################
+    cmp     dword[event], KeyPress        ; Si une touche est pressée
+    je      closeDisplay                  ; Quitte le programme
+    jmp     boucle                        ; Sinon, recommence la boucle
+
+
 dessin:
+; Changer la couleur de dessin
+	mov rdi,qword[display_name]
+	mov rsi,qword[gc]
+	mov edx,0x00FFFF	; Couleur du crayon
+	call XSetForeground
+; Fin Change la couleur de dessin
 
-    ; Génération des triangles et couleurs aléatoires (partie Paco)
-    call genere_triangles_et_couleurs
+    mov dword[x1],100
+	mov dword[y1],100
+	mov dword[x2],200
+	mov dword[y2],150
+; Dessin d'une ligne
+	mov rdi,qword[display_name]
+	mov rsi,qword[window]
+	mov rdx,qword[gc]
+	mov ecx,dword[x1]	; coordonnée source en x
+	mov r8d,dword[y1]	; coordonnée source en y
+	mov r9d,dword[x2]	; coordonnée destination en x
+	mov r14d,dword[y2]
+	push r14		; coordonnée destination en y
+	call XDrawLine
+	add rsp,8
+; Fin Dessin d'une ligne
 
-
-; couleurs sous forme RRGGBB où RR esr le niveau de rouge, GG le niveua de vert et BB le niveau de bleu
-; 0000000 (noir) à FFFFFF (blanc)
-
-;couleur du point 1
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov edx,0xFF0000	; Couleur du crayon ; rouge
-call XSetForeground
-
-; Dessin d'un point rouge : coordonnées (200,200)
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,qword[gc]
-mov ecx,200	; coordonnée source en x
-mov r8d,200	; coordonnée source en y
-call XDrawPoint
-
-;couleur du point 2
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov edx,0x00FF00	; Couleur du crayon ; vert
-call XSetForeground
-
-; Dessin d'un point vert: coordonnées (100,250)
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,qword[gc]
-mov ecx,100	; coordonnée source en x
-mov r8d,250	; coordonnée source en y
-call XDrawPoint
-
-;couleur du point 3
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov edx,0x0000FF	; Couleur du crayon ; bleu
-call XSetForeground
-
-; Dessin d'un point bleu : coordonnées (200,200)
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,qword[gc]
-mov ecx,200	; coordonnée source en x
-mov r8d,200	; coordonnée source en y
-call XDrawPoint
-
-;couleur du point 4
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov edx,0xFF00FF	; Couleur du crayon ; violet
-call XSetForeground
-
-; Dessin d'un point violet : coordonnées (200,250)
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,qword[gc]
-mov ecx,200	; coordonnée source en x
-mov r8d,250	; coordonnée source en y
-call XDrawPoint
-
-;couleur de la ligne 1
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov edx,0x000000	; Couleur du crayon ; noir
-call XSetForeground
-
-; coordonnées de la ligne 1 (noire)
-mov dword[x1],70
-mov dword[y1],50
-mov dword[x2],350
-mov dword[y2],350
-; dessin de la ligne 1
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,qword[gc]
-mov ecx,dword[x1]	; coordonnée source en x
-mov r8d,dword[y1]	; coordonnée source en y
-mov r9d,dword[x2]	; coordonnée destination en x
-push qword[y2]		; coordonnée destination en y
-call XDrawLine
-
-;couleur de la ligne 2
-mov rdi,qword[display_name]
-mov rsi,qword[gc]
-mov edx,0xFFAA00	; Couleur du crayon ; orange
-call XSetForeground
-; coordonnées de la ligne 1 (noire)
-mov dword[x1],300
-mov dword[y1],50
-mov dword[x2],50
-mov dword[y2],350
-; dessin de la ligne 1
-mov rdi,qword[display_name]
-mov rsi,qword[window]
-mov rdx,qword[gc]
-mov ecx,dword[x1]	; coordonnée source en x
-mov r8d,dword[y1]	; coordonnée source en y
-mov r9d,dword[x2]	; coordonnée destination en x
-push qword[y2]		; coordonnée destination en y
-call XDrawLine
-
+    jmp flush
 
 flush:
 mov rdi,qword[display_name]
 call XFlush
-;jmp boucle
+jmp boucle
 mov rax,34
 syscall
 
