@@ -86,10 +86,8 @@ section .bss
 section .data
     event:		times	24 dq 0
 
-    x1:	dd	0
-    x2:	dd	0
-    y1:	dd	0
-    y2:	dd	0
+    ; Minh Cat's variables
+    is_direct:  db  0
 
 section .text
 ;============================
@@ -335,12 +333,33 @@ calculate_all_determinant_rects:
         pop r12
         pop rbx
         ret
+
+; =============================================================
+; FUNCTION 3: check if the current triangle is direct or indirect
+; - input : index of current triangle = rdi
+; - output : set is_direct to 0 or 1
+; =============================================================
+determine_triangle_type:
+    push rbx
+    push r12
+
+    ; Calculate base address of the current triangle
+    mov rax, rdi
+    imul rax, TRI_STRIDE
+    lea r12, [triangle_coord_list + rax]
+
+    
+
+    pop r12
+    pop rbx
+    ret
+
 ; =============================================================
 ; END OF MODULE MINH CAT
 ; =============================================================
 
 ;============================
-;END OF DEFINE FUNCTIONS
+;END OF FUNCTION DEFINITIONS
 ;============================
 
 main:
@@ -427,29 +446,7 @@ boucle: ; Boucle de gestion des événements
 
 
 dessin:
-; Changer la couleur de dessin
-	mov rdi,qword[display_name]
-	mov rsi,qword[gc]
-	mov edx,0x00FFFF	; Couleur du crayon
-	call XSetForeground
-; Fin Change la couleur de dessin
-
-    mov dword[x1],100
-	mov dword[y1],100
-	mov dword[x2],200
-	mov dword[y2],150
-; Dessin d'une ligne
-	mov rdi,qword[display_name]
-	mov rsi,qword[window]
-	mov rdx,qword[gc]
-	mov ecx,dword[x1]	; coordonnée source en x
-	mov r8d,dword[y1]	; coordonnée source en y
-	mov r9d,dword[x2]	; coordonnée destination en x
-	mov r14d,dword[y2]
-	push r14		; coordonnée destination en y
-	call XDrawLine
-	add rsp,8
-; Fin Dessin d'une ligne
+    ; BAMBA va dessiner ici !!
 
     jmp flush
 
