@@ -521,12 +521,12 @@ dessin:
     ;   call generate_rand_color
     ;   call calculate_rect_coord
     ;   call determine_triangle_type
-    ;   set pen color to black for triangle
-    ;   draw 3 sides of triangle (for j=0; j<3; j++)
+    ;   set pen color to black for triangle outline
+    ;   draw 3 sides of triangle (use variable triangle_coord)
     ;   set pen color to triangle_color for remplissage
     ;   for j=min_x of rectangle; j<max_x; j++
     ;       for k=min_y of rect; k<max_y; k++
-    ;            call determine_point_inside_triangle -> if is_inside == 1 -> draw point
+    ;            call determine_point_inside_triangle -> check if is_inside == 1 -> draw point
 
     jmp flush
 
