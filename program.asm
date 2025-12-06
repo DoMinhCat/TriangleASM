@@ -403,12 +403,12 @@ determine_point_inside_triangle:
         jmp .false
 
     .all_left:
-        cmp is_direct, 0
+        cmp [is_direct], 0
         je .true
         jmp .false
     
     .all_right:
-        cmp is_direct, 1
+        cmp [is_direct], 1
         jne .false
 
     .true:
