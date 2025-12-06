@@ -51,8 +51,10 @@ global generate_rand_color
 ;============================
 ; MINH CAT'S FUNCTIONS
 ;============================
-global calculate_a_determinant_rect
+global calculate_rect_coord
 global calculate_vector_coord
+global determine_triangle_type:
+
 
 
 section .bss
@@ -173,7 +175,7 @@ generate_rand_color:
 ; - calculate max/min x/y for the rectangle
 ; - store in rectangle_coord 
 ; =============================================================
-calculate_a_determinant_rect:
+calculate_rect_coord:
     push rbx
 
     ; init min/max using point A (Offset 0)
@@ -253,19 +255,58 @@ calculate_vector_coord:
 
     mov rdx, rcx
     sub rdx, rsi
-    
+    ret
+
 ; =============================================================
-; FUNCTION 2: check if the current triangle is direct or indirect
+; FUNCTION 3: vect A x vect B
+; - input : rdi as Ax, rsi as Ay, rdx as Bx, rcx as By
+; - output : rax
+; =============================================================
+multiply_vector:
+    ; rdi x rcx = rdi
+    imul rdi, rcx
+    ; rdx x rsi = rdx
+    imul rdx, rsi
+
+    mov rax, rdi
+    sub rax, rdx
+    ret
+
+; =============================================================
+; FUNCTION 4: check if the current triangle is direct or indirect
 ; - input : index of current triangle = rdi
 ; - output : set is_direct to 0 or 1
 ; =============================================================
 determine_triangle_type:
-    push rbx
-    push r12
+    ; get vector BA
+    mov rdi, [triangle_coord + 2 * DWORD]
+    mov rsi, [triangle_coord + 3 * DWORD]
+    mov rdx, [triangle_coord]
+    mov rcx, [triangle_coord + DWORD]
+    call calculate_vector_coord
+    ; BA_x : r8
+    ; BA_y : r9
+    mov r8, rax
+    mov r9, rdx
 
+    ; get vector BC, rdi and rsi stays the same for B, only update for C
+    mov rdx, [triangle_coord + 4 * DWORD]
+    mov rcx, [triangle_coord + 5 * DWORD]
+    call calculate_vector_coord
+    ; BC_x : r10
+    ; BC_y : r11
+    mov r10, rax
+    mov r11, rdx
 
-    pop r12
-    pop rbx
+    ; BA x BC
+    mov rdi, r8
+    mov rsi, r9
+    mov rdx, r10
+    mov rcx, r11
+    call multiply_vector
+
+    test rax, rax
+    sets byte [is_direct]
     ret
 
 ; =============================================================
@@ -308,8 +349,8 @@ main:
     mov     rsi,rbx                   ; parent = root window
     mov     rdx,10                    ; position x de la fenêtre
     mov     rcx,10                    ; position y de la fenêtre
-    mov     r8,LARGEUR                ; largeur de la fenêtre
-    mov     r9,HAUTEUR           	; hauteur de la fenêtre
+    mov     r8,WIDTH                ; largeur de la fenêtre
+    mov     r9,HEIGHT           	; hauteur de la fenêtre
     push 0x000000                     ; couleur du fond (noir, 0x000000)
     push 0x00FF00                     ; couleur de fond (vert, 0x00FF00)
     push 1                          ; épaisseur du bord
@@ -365,11 +406,11 @@ dessin:
     jmp flush
 
 flush:
-mov rdi,qword[display_name]
-call XFlush
-jmp boucle
-mov rax,34
-syscall
+    mov rdi,qword[display_name]
+    call XFlush
+    jmp boucle
+    mov rax,34
+    syscall
 
 closeDisplay:
     mov     rax,qword[display_name]
