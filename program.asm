@@ -55,6 +55,7 @@ global calculate_rect_coord
 global calculate_vector_coord
 global determine_triangle_type
 global determine_side_of_point
+global determine_point_inside_triangle
 
 
 section .bss
@@ -81,6 +82,7 @@ section .data
     ; Minh Cat's variables
     is_direct:  db  0
     is_left:  db  0
+    is_inside:  db  0
 
 section .text
 ;============================
@@ -351,6 +353,60 @@ determine_side_of_point:
     ret
     
 ; =============================================================
+; FUNCTION 6: check if the point in the current triangle
+; - input : r8 as point_x, r9 as point_y, triangle_coord
+; - output : set is_inside to 0 or 1
+; =============================================================
+determine_point_inside_triangle:
+    ; r10: is left counter
+    xor r10, r10
+
+    .check_AB:
+        mov rdi, [triangle_coord]
+        mov rsi, [triangle_coord + DWORD]
+        mov rdx, [triangle_coord + 2 * DWORD]
+        mov rcx, [triangle_coord + 3 * DWORD]
+        call determine_side_of_point
+
+        cmp byte[is_left], 1
+        jne .check_BC
+        inc r10
+
+    .check_BC:
+        mov rdi, [triangle_coord + 2 * DWORD]
+        mov rsi, [triangle_coord + 3 * DWORD]
+        mov rdx, [triangle_coord + 4 * DWORD]
+        mov rcx, [triangle_coord + 5 * DWORD]
+        call determine_side_of_point
+
+        cmp byte[is_left], 1
+        jne .check_CA
+        inc r10
+
+    .check_CA:
+        mov rdi, [triangle_coord + 4 * DWORD]
+        mov rsi, [triangle_coord + 5 * DWORD]
+        mov rdx, [triangle_coord]
+        mov rcx, [triangle_coord + DWORD]
+        call determine_side_of_point
+
+        cmp byte[is_left], 1
+        jne .final_check
+        inc r10
+
+    .final_check:
+        cmp r10, 3
+        je .is_inside
+
+        mov byte[is_inside], 0
+        jmp .end
+    .is_inside:
+        mov byte[is_inside], 1
+
+    .end:
+        ret
+
+; =============================================================
 ; END OF MODULE MINH CAT
 ; =============================================================
 
@@ -443,6 +499,21 @@ boucle: ; Boucle de gestion des événements
 
 dessin:
     ; BAMBA va dessiner ici !!
+
+    ; POUR T'AIDER, PLS READ (pay attention to argument registres of functions )
+    ;==========================================
+    ; for i=0; i<NB_TRIANGLES; i++
+    ;   call generate_a_triangle
+    ;   call generate_rand_color
+    ;   call calculate_rect_coord
+    ;   call determine_triangle_type
+    ;   set pen color to black for triangle
+    ;   draw 3 sides of triangle (for j=0; j<3; j++)
+    ;   set pen color to triangle_color for remplissage
+    ;   for j=min_x of rectangle; j<max_x; j++
+    ;       for k=min_y of rect; k<max_y; k++
+    ;           for l=0 of rect; l<3; l++
+    ;               call determine_side_of_point -> if is
 
     jmp flush
 
