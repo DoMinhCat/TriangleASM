@@ -396,12 +396,26 @@ determine_point_inside_triangle:
 
     .final_check:
         cmp r10, 3
-        je .is_inside
+        je .all_left
+        cmp r10, 0
+        je .all_right
 
-        mov byte[is_inside], 0
-        jmp .end
-    .is_inside:
+        jmp .false
+
+    .all_left:
+        cmp is_direct, 0
+        je .true
+        jmp .false
+    
+    .all_right:
+        cmp is_direct, 1
+        jne .false
+
+    .true:
         mov byte[is_inside], 1
+        jmp .end
+    .false:
+        mov byte[is_inside], 0
 
     .end:
         ret
@@ -512,8 +526,7 @@ dessin:
     ;   set pen color to triangle_color for remplissage
     ;   for j=min_x of rectangle; j<max_x; j++
     ;       for k=min_y of rect; k<max_y; k++
-    ;           for l=0 of rect; l<3; l++
-    ;               call determine_side_of_point -> if is
+    ;            call determine_point_inside_triangle -> if is_inside == 1 -> draw point
 
     jmp flush
 
