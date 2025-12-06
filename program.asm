@@ -53,8 +53,8 @@ global generate_rand_color
 ;============================
 global calculate_rect_coord
 global calculate_vector_coord
-global determine_triangle_type:
-
+global determine_triangle_type
+global determine_side_of_point
 
 
 section .bss
@@ -80,6 +80,7 @@ section .data
 
     ; Minh Cat's variables
     is_direct:  db  0
+    is_left:  db  0
 
 section .text
 ;============================
@@ -172,8 +173,9 @@ generate_rand_color:
 
 ; =============================================================
 ; FUNCTION 1: calculate determinant rectangle
+; - input : triangle_coord
 ; - calculate max/min x/y for the rectangle
-; - store in rectangle_coord 
+; - store output in rectangle_coord 
 ; =============================================================
 calculate_rect_coord:
     push rbx
@@ -273,8 +275,8 @@ multiply_vector:
     ret
 
 ; =============================================================
-; FUNCTION 4: check if the current triangle is direct or indirect
-; - input : index of current triangle = rdi
+; FUNCTION 4: check if current triangle is direct or indirect
+; - input : triangle_coord
 ; - output : set is_direct to 0 or 1
 ; =============================================================
 determine_triangle_type:
@@ -309,6 +311,45 @@ determine_triangle_type:
     sets byte [is_direct]
     ret
 
+; =============================================================
+; FUNCTION 5: check if the point is on the left or on the right of the vect AB
+; - input : rdi as Ax, rsi as Ay, rdx as Bx, rcx as By, r8 as point_x, r9 as point_y
+; - output : set is_left to 0 or 1
+; =============================================================
+determine_side_of_point:
+    push r12
+    push r13
+
+    ; get vector AB, all registre for calculate_vector_coord already in right order
+    call calculate_vector_coord
+    ; AB_x : r10
+    ; AB_y : r11
+    mov r10, rax
+    mov r11, rdx
+
+    ; get vector AP, A stays the same, only update for P
+    mov rdx, r8
+    mov rcx, r9
+    call calculate_vector_coord
+    ; AP_x : r12
+    ; AP_y : r13
+    mov r12, rax
+    mov r13, rdx
+
+    ; AB x AP
+    mov rdi, r10
+    mov rsi, r11
+    mov rdx, r12
+    mov rcx, r13
+    call multiply_vector
+
+    test rax, rax
+    sets byte [is_left]
+
+    pop r13
+    pop r12
+    ret
+    
 ; =============================================================
 ; END OF MODULE MINH CAT
 ; =============================================================
