@@ -512,22 +512,139 @@ boucle: ; Boucle de gestion des événements
 
 
 dessin:
-    ; BAMBA va dessiner ici !!
+    ; === BAMBA: CODE DE DESSIN DES TRIANGLES ===
+    
+    ; Sauvegarde des registres
+    push r12
+    push r13
+    push r14
+    push r15
+    
+    ; Boucle pour NB_TRIANGLES triangles
+    mov r12, 0                  ; r12 = i (compteur triangles)
+    
+.triangle_loop:
+    cmp r12, NB_TRIANGLES
+    jge .end_dessin             ; Si i >= NB_TRIANGLES, fin(end dessin)
+    
+    ;  Générer un triangle aléatoire
+    call generate_a_triangle
+    
+    ;  Générer une couleur aléatoire
+    call generate_rand_color
+    
+    ; Calculer le rectangle englobant
+    call calculate_rect_coord
+    
+    ; Déterminer le type de triangle (direct/indirect)
+    call determine_triangle_type
+    
+    ; Dessiner le contour en NOIR
+    ;  Définir la couleur noire
+    mov rdi, qword[display_name]
+    mov rsi, qword[gc]
+    mov rdx, 0x000000          ; Couleur noire
+    call XSetForeground
+    
+    ;  Dessiner côté AB
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, dword[triangle_coord + 0]    ; Ax
+    mov r8d, dword[triangle_coord + 4]    ; Ay
+    mov r9d, dword[triangle_coord + 8]    ; Bx
+    push qword[triangle_coord + 12]       ; By (sur la pile) car le 7 e paramétre ne peut pas passer sur le registre 
+    call XDrawLine  ; trace la ligne AB 
+    add rsp, 8                           ; Nettoyer la pile en montant d'un étage dans la pile 
+    
+    ;  Dessiner côté BC meme principe que AB 
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, dword[triangle_coord + 8]    ; Bx
+    mov r8d, dword[triangle_coord + 12]   ; By
+    mov r9d, dword[triangle_coord + 16]   ; Cx
+    push qword[triangle_coord + 20]       ; Cy (sur la pile)
+    call XDrawLine
+    add rsp, 8
+    
+    ;  Dessiner côté CA
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, dword[triangle_coord + 16]   ; Cx
+    mov r8d, dword[triangle_coord + 20]   ; Cy
+    mov r9d, dword[triangle_coord + 0]    ; Ax
+    push qword[triangle_coord + 4]        ; Ay (sur la pile)
+    call XDrawLine
+    add rsp, 8
+    
+    ;  Remplissage du triangle avec sa couleur
+    ;  Définir la couleur du triangle
+    mov rdi, qword[display_name]
+    mov rsi, qword[gc]
+    mov edx, dword[triangle_color]       ; Couleur aléatoire
+    call XSetForeground
+    
+    ;  Parcourir tous les points du rectangle englobant
+    ; rectangle_coord contient: [max_x, min_x, max_y, min_y]
+    mov r13d, dword[rectangle_coord + 4]  ; x = min_x (offset 4)
+    mov r14d, dword[rectangle_coord + 12] ; y = min_y (offset 12)
+    
+    ; Limites pour les boucles
+    mov eax, dword[rectangle_coord]       ; max_x (offset 0)
+    mov dword[max_x_temp], eax
+    mov eax, dword[rectangle_coord + 8]   ; max_y (offset 8)
+    mov dword[max_y_temp], eax
+    
+.y_loop:
+    mov eax, dword[max_y_temp]
+    cmp r14d, eax                         ; y <= max_y ?
+    jg .next_triangle                     ; Si y > max_y, triangle suivant
+    
+    ; Réinitialiser x pour chaque nouvelle ligne y
+    mov r13d, dword[rectangle_coord + 4]  ; x = min_x
+    
+.x_loop:
+    mov eax, dword[max_x_temp]
+    cmp r13d, eax                         ; x <= max_x ?
+    jg .next_y                            ; Si x > max_x, ligne y suivante
+    
+    ; Vérifier si le point (x, y) est dans le triangle
+    mov r8, r13                           ; point_x = x
+    mov r9, r14                           ; point_y = y
+    call determine_point_inside_triangle
+    
+    cmp byte[is_inside], 1
+    jne .skip_point
+    
+    ; Le point est dans le triangle, on le dessine
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, r13d                         ; x
+    mov r8d, r14d                         ; y
+    call XDrawPoint
+    
+.skip_point:
+    inc r13d                              ; x++
+    jmp .x_loop
+    
+.next_y:
+    inc r14d                              ; y++
+    jmp .y_loop
+    
+.next_triangle:
+    inc r12                               ; i++ (triangle suivant)
+    jmp .triangle_loop
 
-    ; POUR T'AIDER, PLS READ (pay attention to argument registres of functions )
-    ;==========================================
-    ; for i=0; i<NB_TRIANGLES; i++
-    ;   call generate_a_triangle
-    ;   call generate_rand_color
-    ;   call calculate_rect_coord
-    ;   call determine_triangle_type
-    ;   set pen color to black for triangle outline
-    ;   draw 3 sides of triangle (use variable triangle_coord)
-    ;   set pen color to triangle_color for remplissage
-    ;   for j=min_x of rectangle; j<max_x; j++
-    ;       for k=min_y of rect; k<max_y; k++
-    ;            call determine_point_inside_triangle -> check if is_inside == 1 -> draw point
-
+.end_dessin:
+    ; Restauration des registres
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    
     jmp flush
 
 flush:
