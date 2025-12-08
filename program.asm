@@ -38,7 +38,7 @@ extern exit
 %define BYTE	1
 %define	WIDTH 400	; largeur en pixels de la fenêtre
 %define HEIGHT 400	; hauteur en pixels de la fenêtre
-%define NB_TRIANGLES  5 ; total num of triangles
+%define NB_TRIANGLES  1 ; total num of triangles
 
 global main
 
@@ -653,7 +653,7 @@ dessin:
 flush:
     mov rdi,qword[display_name]
     call XFlush
-    jmp boucle
+    ;jmp boucle
     mov rax,34
     syscall
 
