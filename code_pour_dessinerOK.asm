@@ -137,11 +137,12 @@ boucle: ; Boucle de gestion des événements
     mov     rsi, event          ; Passe l'adresse de la structure d'événement
     call    XNextEvent          ; Attend et récupère le prochain événement
 
+    cmp     dword[event], KeyPress        ; Si une touche est pressée
+    je      closeDisplay                  ; Quitte le programme
+    
     cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
     je      dessin                        ; Passe à la phase de dessin
 
-    cmp     dword[event], KeyPress        ; Si une touche est pressée
-    je      closeDisplay                  ; Quitte le programme
     jmp     boucle                        ; Sinon, recommence la boucle
 
 
