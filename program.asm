@@ -36,9 +36,10 @@ extern exit
 %define BYTE	1
 %define NBTRI	1
 %define BYTE	1
-%define	WIDTH 400	; largeur en pixels de la fenêtre
-%define HEIGHT 400	; hauteur en pixels de la fenêtre
-%define NB_TRIANGLES  2 ; total num of triangles
+%define	WIDTH 400
+%define HEIGHT 400
+
+%define NB_TRIANGLES  2
 
 global main
 
@@ -68,12 +69,12 @@ section .bss
     window:		resq	1
     gc:		resq	1
 
-    ; === Données Paco : triangles + couleurs ===
+    ; === Données Paco  ===
     triangle_coord: resd 6
     triangle_color: resd 1
 
     ; Minh Cat's variables
-    rectangle_coord:   resd 4 ; determinant rectangle - [0]=max_x, [1]=min_x, [2]=max_y, [3]=min_y
+    rectangle_coord:   resd 4 ;
 
 section .data
     event:		times	24 dq 0
@@ -84,68 +85,56 @@ section .data
     is_inside:  db  0
 
     ;Bamba's variables
-     max_x_temp: dd 0
-     max_y_temp: dd 
+    max_x_temp: dd 0
+    max_y_temp: dd 
 
 section .text
 ; =============================================================
-; MODULE PACO : génération aléatoire des triangles + couleurs
+; MODULE PACO
 ; =============================================================
-
 ; =============================================================
-;  FONCTION 1 : generate_rand_nb(max) || rand_borne of Paco
-;  - input : rdi (max)
-;  - vérifie CF = 1
-;  - renvoie rax : un entier dans [0 ; max-1]
+;  FONCTION 1 : generate_rand_nb(max)
 ; =============================================================
 generate_rand_nb:
     push rbx
 
     .retry:
         rdrand rax
-        jnc .retry      ; si CF = 0 → échec → retente
+        jnc .retry
 
-        mov  rbx, rdi        ; rdi = max value allowed for rand num
+        mov  rbx, rdi        ; rdi = max value allowed
         xor  rdx, rdx
-        div  rbx             ; (RDX:RAX / RBX) => reste dans RDX
+        div  rbx
 
-        mov  rax, rdx        ; on renvoie le reste modulo max
+        mov  rax, rdx
 
         pop  rbx
         ret
 
 ; =============================================================
 ;  FONCTION 2 : generate_a_triangle
-;  - génère Ax,Ay,Bx,By,Cx,Cy pour un triangle
-;  - stock ses x,y dans triangle_coord
 ; =============================================================
 generate_a_triangle:
-    ; ----- Ax -----
     mov  rdi, WIDTH
     call generate_rand_nb
     mov  [triangle_coord], eax
 
-    ; ----- Ay -----
     mov  rdi, HEIGHT
     call generate_rand_nb
     mov  [triangle_coord + 1 * DWORD], eax
 
-    ; ----- Bx -----
     mov  rdi, WIDTH
     call generate_rand_nb
     mov  [triangle_coord + 2 * DWORD], eax
 
-    ; ----- By -----
     mov  rdi, HEIGHT
     call generate_rand_nb
     mov  [triangle_coord + 3 * DWORD], eax
 
-    ; ----- Cx -----
     mov  rdi, WIDTH
     call generate_rand_nb
     mov  [triangle_coord + 4 * DWORD], eax
 
-    ; ----- Cy -----
     mov  rdi, HEIGHT
     call generate_rand_nb
     mov  [triangle_coord + 5 * DWORD], eax
@@ -154,14 +143,12 @@ generate_a_triangle:
 
 ; =============================================================
 ;  FONCTION 3 : generate_rand_color()
-;  - génère une couleur aléatoirement 
-;  - couleur stocké dans triangle_color
 ; =============================================================
 generate_rand_color:
-    mov  rdi, 0x1000000          ; 2^24 = 0x1000000
-    call generate_rand_nb        ; rax ∈ [0 ; 0xFFFFFF]
+    mov  rdi, 0x1000000
+    call generate_rand_nb
 
-    mov  dword[triangle_color], eax ; store color in the list
+    mov  dword[triangle_color], eax
     ret
 
 ; =============================================================
@@ -171,108 +158,88 @@ generate_rand_color:
 ; =============================================================
 ; MODULE MINH CAT
 ; =============================================================
-
 ; =============================================================
 ; FUNCTION 1: calculate determinant rectangle
-; - input : triangle_coord
-; - calculate max/min x/y for the rectangle
-; - store output in rectangle_coord 
 ; =============================================================
 calculate_rect_coord:
     push rbx
 
-    ; init min/max using point A (Offset 0)
-    mov r8d, dword[triangle_coord + 0]  ; max x 
-    mov r9d, dword[triangle_coord + 0]  ; min x
-    mov r10d, dword[triangle_coord + DWORD] ; max y 
-    mov r11d, dword[triangle_coord + DWORD] ; min y
+    mov r8d, dword[triangle_coord + 0]
+    mov r9d, dword[triangle_coord + 0]
+    mov r10d, dword[triangle_coord + DWORD]
+    mov r11d, dword[triangle_coord + DWORD]
 
-    mov ebx, 0               ; Loop counter (EBX)
+    mov ebx, 0
     
-    ; for ebx=0; ebx < 2 (Iterates for comparing with point B and C)
     .loop:
         cmp ebx, 2
         jge .store
 
-        ; Calculate offset for the current point (A or B)
-        ; Offset calculation: (EBX + 1) * 8
-        mov ecx, ebx             ; ECX = loop counter (0 or 1)
-        inc ecx                  ; ECX = (1 or 2)
-        imul ecx, 8              ; ECX = offset (8 or 16)
+        mov ecx, ebx
+        inc ecx
+        imul ecx, 8
 
-        ; EDX = offset for Y (ECX + 4)
         mov edx, ecx
         add edx, 4
 
-        ; Compare Max X
-        cmp r8d, dword[triangle_coord + rcx] ; Compare current max_x to next_x (offset in RCX)
+        cmp r8d, dword[triangle_coord + rcx]
         jl .set_max_x
         
     .cmp_min_x:
-        ; Compare Min X
         cmp r9d, dword[triangle_coord + rcx] ; Compare current min_x to next_x (offset in RCX)
         jg .set_min_x
     .cmp_max_y:
-        ; Compare Max Y
         cmp r10d, dword[triangle_coord + rdx] ; Compare current max_y to next_y (offset in RDX)
         jl .set_max_y     
     .cmp_min_y:
-        ; Compare Min Y
         cmp r11d, dword[triangle_coord + rdx] 
         jg .set_min_y
     .continue:
-        inc ebx                  ; Increment counter
+        inc ebx
         jmp .loop
 
     .set_max_x:
-        mov r8d, dword[triangle_coord + rcx] ; Set max_x
+        mov r8d, dword[triangle_coord + rcx]
         jmp .cmp_min_x
     .set_min_x:
-        mov r9d, dword[triangle_coord + rcx] ; Set min_x
+        mov r9d, dword[triangle_coord + rcx]
         jmp .cmp_max_y      
     .set_max_y:
-        mov r10d, dword[triangle_coord + rdx] ; Set max_y
+        mov r10d, dword[triangle_coord + rdx]
         jmp .cmp_min_y      
     .set_min_y:
-        mov r11d, dword[triangle_coord + rdx] ; Set min_y
+        mov r11d, dword[triangle_coord + rdx]
         jmp .continue
 
     .store:
-        ; store the results (r8d, r9d, r10d, r11d)
-        mov dword[rectangle_coord], r8d   ; max_x
-        mov dword[rectangle_coord + DWORD], r9d   ; min_x
-        mov dword[rectangle_coord + 2 * DWORD], r10d  ; max_y
-        mov dword[rectangle_coord + 3 * DWORD], r11d ; min_y
+        mov dword[rectangle_coord], r8d
+        mov dword[rectangle_coord + DWORD], r9d
+        mov dword[rectangle_coord + 2 * DWORD], r10d
+        mov dword[rectangle_coord + 3 * DWORD], r11d
 
         pop rbx
         ret
 
 ; =============================================================
 ; FUNCTION 2: calculate x,y of a vector from 2 points
-; - input : rdi as Ax, rsi as Ay, rdx as Bx, rcx as By
-; - output : rax as ABx, rdx as ABy
 ; =============================================================
 calculate_vector_coord:
     mov rax, rdx
-    sub rax, rdi       ; rax = Bx - Ax
+    sub rax, rdi
     mov rdx, rcx
-    sub rdx, rsi       ; rdx = By - Ay
+    sub rdx, rsi
     ret
 
 ; =============================================================
 ; FUNCTION 3: vect A x vect B
-; - input : rdi as Ax, rsi as Ay, rdx as Bx, rcx as By
-; - output : rax
 ; =============================================================
 multiply_vector:
-    movsxd rdi, edi  ; sign-extend to 64-bit
+    movsxd rdi, edi
     movsxd rsi, esi
     movsxd rdx, edx
     movsxd rcx, ecx
 
-    ; rdi x rcx = rdi
     imul rdi, rcx
-    ; rdx x rsi = rdx
     imul rdx, rsi
 
     mov rax, rdi
@@ -281,31 +248,23 @@ multiply_vector:
 
 ; =============================================================
 ; FUNCTION 4: check if current triangle is direct or indirect
-; - input : triangle_coord
-; - output : set is_direct to 0 or 1
 ; =============================================================
 determine_triangle_type:
-    ; get vector BA
     mov edi, [triangle_coord + 2 * DWORD]
     mov esi, [triangle_coord + 3 * DWORD]
     mov edx, [triangle_coord]
     mov ecx, [triangle_coord + DWORD]
     call calculate_vector_coord
-    ; BA_x : r8
-    ; BA_y : r9
+
     mov r8, rax
     mov r9, rdx
 
-    ; get vector BC, rdi and rsi stays the same for B, only update for C
     mov edx, [triangle_coord + 4 * DWORD]
     mov ecx, [triangle_coord + 5 * DWORD]
     call calculate_vector_coord
-    ; BC_x : r10
-    ; BC_y : r11
     mov r10, rax
     mov r11, rdx
 
-    ; BA x BC
     mov rdi, r8
     mov rsi, r9
     mov rdx, r10
@@ -327,23 +286,17 @@ determine_side_of_point:
     push r12
     push r13
 
-    ; get vector AB, all registre for calculate_vector_coord already in right order
     call calculate_vector_coord
-    ; AB_x : r10
-    ; AB_y : r11
     mov r10, rax
     mov r11, rdx
 
-    ; get vector AP, A stays the same, only update for P
     mov rdx, r8
     mov rcx, r9
     call calculate_vector_coord
-    ; AP_x : r12
-    ; AP_y : r13
+
     mov r12, rax
     mov r13, rdx
 
-    ; AB x AP
     mov rdi, r10
     mov rsi, r11
     mov rdx, r12
@@ -361,11 +314,8 @@ determine_side_of_point:
     
 ; =============================================================
 ; FUNCTION 6: check if the point in the current triangle
-; - input : r8 as point_x, r9 as point_y, triangle_coord
-; - output : set is_inside to 0 or 1
 ; =============================================================
 determine_point_inside_triangle:
-    ; r10: is left counter
     xor r10, r10
 
     .check_AB:
@@ -516,133 +466,110 @@ boucle: ; Boucle de gestion des événements
 
 dessin:
     ; === BAMBA: CODE DE DESSIN DES TRIANGLES ===
-    
-    ; Sauvegarde des registres
     push r12
     push r13
     push r14
     push r15
     
-    ; Boucle pour NB_TRIANGLES triangles
-    mov r12, 0                  ; r12 = i (compteur triangles)
+    mov r12, 0                  
     
 .triangle_loop:
     cmp r12, NB_TRIANGLES
-    jge .end_dessin             ; Si i >= NB_TRIANGLES, fin(end dessin)
+    jge .end_dessin
     
-    ;  Générer un triangle aléatoire
     call generate_a_triangle
-    
-    ;  Générer une couleur aléatoire
     call generate_rand_color
-    
-    ; Calculer le rectangle englobant
     call calculate_rect_coord
-    
-    ; Déterminer le type de triangle (direct/indirect)
     call determine_triangle_type
     
-    ; Dessiner le contour en NOIR
-    ;  Définir la couleur noire
     mov rdi, qword[display_name]
     mov rsi, qword[gc]
-    mov rdx, 0x000000          ; Couleur noire
+    mov rdx, 0x000000
     call XSetForeground
     
-    ;  Dessiner côté AB
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, dword[triangle_coord]    ; Ax
-    mov r8d, dword[triangle_coord + DWORD]    ; Ay
-    mov r9d, dword[triangle_coord + 2 * DWORD]    ; Bx
-    push qword[triangle_coord + 3 * DWORD]       ; By (sur la pile) car le 7 e paramétre ne peut pas passer sur le registre 
-    call XDrawLine  ; trace la ligne AB 
-    add rsp, 8                           ; Nettoyer la pile en montant d'un étage dans la pile 
+    mov ecx, dword[triangle_coord]
+    mov r8d, dword[triangle_coord + DWORD]
+    mov r9d, dword[triangle_coord + 2 * DWORD]
+    push qword[triangle_coord + 3 * DWORD]
+    call XDrawLine
+    add rsp, 8 
     
-    ;  Dessiner côté BC meme principe que AB 
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, dword[triangle_coord + 2*DWORD]  ; Bx
-    mov r8d, dword[triangle_coord + 3*DWORD]  ; By
-    mov r9d, dword[triangle_coord + 4*DWORD]  ; Cx
-    push qword[triangle_coord + 5*DWORD]      ; Cy (sur la pile)
+    mov ecx, dword[triangle_coord + 2*DWORD] 
+    mov r8d, dword[triangle_coord + 3*DWORD]
+    mov r9d, dword[triangle_coord + 4*DWORD]
+    push qword[triangle_coord + 5*DWORD]
     call XDrawLine
     add rsp, 8
     
-    ;  Dessiner côté CA
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, dword[triangle_coord + 4*DWORD]   ; Cx
-    mov r8d, dword[triangle_coord + 5*DWORD]   ; Cy
-    mov r9d, dword[triangle_coord]    ; Ax
-    push qword[triangle_coord + DWORD]        ; Ay (sur la pile)
+    mov ecx, dword[triangle_coord + 4*DWORD]
+    mov r8d, dword[triangle_coord + 5*DWORD]
+    mov r9d, dword[triangle_coord]
+    push qword[triangle_coord + DWORD]
     call XDrawLine
     add rsp, 8
     
-    ;  Remplissage du triangle avec sa couleur
-    ;  Définir la couleur du triangle
     mov rdi, qword[display_name]
     mov rsi, qword[gc]
-    mov edx, dword[triangle_color]       ; Couleur aléatoire
+    mov edx, dword[triangle_color]
     call XSetForeground
     
-    ;  Parcourir tous les points du rectangle englobant
-    ; rectangle_coord contient: [max_x, min_x, max_y, min_y]
-    mov r13d, dword[rectangle_coord + DWORD]  ; x = min_x (offset 4)
-    mov r14d, dword[rectangle_coord + 3 * DWORD] ; y = min_y (offset 12)
     
-    ; Limites pour les boucles
-    mov eax, dword[rectangle_coord]       ; max_x (offset 0)
+    mov r13d, dword[rectangle_coord + DWORD]
+    mov r14d, dword[rectangle_coord + 3 * DWORD]
+    
+    mov eax, dword[rectangle_coord]
     mov dword[max_x_temp], eax
-    mov eax, dword[rectangle_coord + 2 * DWORD]   ; max_y (offset 8)
+    mov eax, dword[rectangle_coord + 2 * DWORD]
     mov dword[max_y_temp], eax
     
 .y_loop:
     mov eax, dword[max_y_temp]
-    cmp r14d, eax                         ; y <= max_y ?
-    jg .next_triangle                     ; Si y > max_y, triangle suivant
+    cmp r14d, eax
+    jg .next_triangle
     
-    ; Réinitialiser x pour chaque nouvelle ligne y
-    mov r13d, dword[rectangle_coord + DWORD]  ; x = min_x
+    mov r13d, dword[rectangle_coord + DWORD]
     
 .x_loop:
     mov eax, dword[max_x_temp]
-    cmp r13d, eax                         ; x <= max_x ?
-    jg .next_y                            ; Si x > max_x, ligne y suivante
+    cmp r13d, eax
+    jg .next_y
     
-    ; Vérifier si le point (x, y) est dans le triangle
-    mov r8, r13                           ; point_x = x
-    mov r9, r14                           ; point_y = y
+    mov r8, r13
+    mov r9, r14
     call determine_point_inside_triangle
     
     cmp byte[is_inside], 1
     jne .skip_point
     
-    ; Le point est dans le triangle, on le dessine
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, r13d                         ; x
-    mov r8d, r14d                         ; y
+    mov ecx, r13d ; x
+    mov r8d, r14d ; y
     call XDrawPoint
     
 .skip_point:
-    inc r13d                              ; x++
+    inc r13d
     jmp .x_loop
     
 .next_y:
-    inc r14d                              ; y++
+    inc r14d
     jmp .y_loop
     
 .next_triangle:
-    inc r12                               ; i++ (triangle suivant)
+    inc r12
     jmp .triangle_loop
 
 .end_dessin:
-    ; Restauration des registres
     pop r15
     pop r14
     pop r13
