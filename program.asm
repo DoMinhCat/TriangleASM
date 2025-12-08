@@ -73,8 +73,7 @@ section .bss
     triangle_color: resd 1
 
     ; Minh Cat's variables
-    rectangle_coord:   resd 4 ; determinant rectangle - min_x, max_x, min_y, max_y
-
+    rectangle_coord:   resd 4 ; determinant rectangle - [0]=max_x, [1]=min_x, [2]=max_y, [3]=min_y
 
 section .data
     event:		times	24 dq 0
@@ -89,10 +88,6 @@ section .data
      max_y_temp: dd 
 
 section .text
-;============================
-;DEFINE FUNCTIONS HERE
-;============================
-
 ; =============================================================
 ; MODULE PACO : génération aléatoire des triangles + couleurs
 ; =============================================================
@@ -258,18 +253,10 @@ calculate_rect_coord:
 ; - output : rax as ABx, rdx as ABy
 ; =============================================================
 calculate_vector_coord:
-    push rcx
-    push rdx
-    
     mov rax, rdx
-    sub rax, rdi
-    
-    pop rdx  ; restore original rdx
-    mov r10, rdx
-    sub r10, rsi
-    mov rdx, r10
-    
-    pop rcx
+    sub rax, rdi       ; rax = Bx - Ax
+    mov rdx, rcx
+    sub rdx, rsi       ; rdx = By - Ay
     ret
 
 ; =============================================================
@@ -325,8 +312,8 @@ determine_triangle_type:
     mov rcx, r11
     call multiply_vector
 
-    test rax, rax
-    sets byte [is_direct]
+    cmp rax, 0
+    setl byte [is_direct]
     ret
 
 ; =============================================================
@@ -361,8 +348,8 @@ determine_side_of_point:
     mov rcx, r13
     call multiply_vector
 
-    test rax, rax
-    sets byte [is_left]
+    cmp rax, 0
+    setl byte [is_left]
 
     pop r13
     pop r12
@@ -440,10 +427,6 @@ determine_point_inside_triangle:
 ; END OF MODULE MINH CAT
 ; =============================================================
 
-;============================
-;END OF FUNCTION DEFINITIONS
-;============================
-
 main:
     ; Sauvegarde du registre de base pour préparer les appels à printf
     push    rbp
@@ -466,9 +449,9 @@ main:
     mov     [display_name], rax
 
     ; Récupère la fenêtre racine (root window) du display
-    mov     rdi,qword[display_name]   ; Place le display dans rdi
-    mov     esi,dword[screen]         ; Place le numéro d'écran dans esi
-    call XRootWindow                ; Appel de XRootWindow pour obtenir la fenêtre racine
+    mov     rdi, qword[display_name]
+    xor     esi, esi      ; screen = 0 (or use XDefaultScreen if you import it)
+    call    XRootWindow               ; Appel de XRootWindow pour obtenir la fenêtre racine
     mov     rbx,rax               ; Stocke la root window dans rbx
 
     ; Création d'une fenêtre simple
