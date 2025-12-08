@@ -38,7 +38,7 @@ extern exit
 %define BYTE	1
 %define	WIDTH 400	; largeur en pixels de la fenêtre
 %define HEIGHT 400	; hauteur en pixels de la fenêtre
-%define NB_TRIANGLES  1 ; total num of triangles
+%define NB_TRIANGLES  2 ; total num of triangles
 
 global main
 
@@ -499,190 +499,167 @@ main:
     jz closeDisplay              ; Si échec, quitte
     mov qword[gc], rax           ; Stocke le GC dans la variable gc
 	
-; -----------------------
-; Event loop and drawing
-; -----------------------
-
 boucle: ; Boucle de gestion des événements
     mov     rdi, qword[display_name]
-    cmp     rdi, 0
-    je      closeDisplay
+    cmp     rdi, 0              ; Vérifie que le display est toujours valide
+    je      closeDisplay        ; Si non, quitte
+    mov     rsi, event          ; Passe l'adresse de la structure d'événement
+    call    XNextEvent          ; Attend et récupère le prochain événement
 
-    mov     rsi, event
-    call    XNextEvent
+    cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
+    je      dessin                        ; Passe à la phase de dessin
 
-    cmp     dword[event], ConfigureNotify
-    je      .do_dessin
-
-    cmp     dword[event], KeyPress
-    je      closeDisplay
-
-    jmp     boucle
-
-.do_dessin:
-    call    dessin
-    jmp     boucle
+    cmp     dword[event], KeyPress        ; Si une touche est pressée
+    je      closeDisplay                  ; Quitte le programme
+    jmp     boucle                        ; Sinon, recommence la boucle
 
 
-; ============================
-; =======  D E S S I N  =======
-; ============================
-; desssin is now a real function (call/ret). We:
-; - push r12..r15 (callee-saved)
-; - sub rsp,8 to align stack to 16 before calling any C function
-; - whenever we push extra args for Xlib calls we maintain alignment:
-;     sub rsp,8 ; push args ; call ; add rsp,16
-; - restore stack and pop regs, then ret
 dessin:
-    ; save callee-saved registers
-    push    r12
-    push    r13
-    push    r14
-    push    r15
-
-    ; Align stack: at function entry RSP%16 == 8 (because caller used CALL).
-    ; After 4 pushes RSP%16 still == 8, so subtract 8 to make it 0 (aligned).
-    sub     rsp, 8
-
+    ; === BAMBA: CODE DE DESSIN DES TRIANGLES ===
+    
+    ; Sauvegarde des registres
+    push r12
+    push r13
+    push r14
+    push r15
+    
     ; Boucle pour NB_TRIANGLES triangles
-    xor     r12d, r12d          ; r12 = 0
-
+    mov r12, 0                  ; r12 = i (compteur triangles)
+    
 .triangle_loop:
-    cmp     r12, NB_TRIANGLES
-    jge     .end_dessin
-
-    call    generate_a_triangle
-    call    generate_rand_color
-    call    calculate_rect_coord
-    call    determine_triangle_type
-
-    ; ---- Contour en noir (XSetForeground: uses registers only) ----
-    mov     rdi, qword[display_name]
-    mov     rsi, qword[gc]
-    xor     rdx, rdx            ; color = 0x000000
-    call    XSetForeground
-
-    ; ---- Ligne AB (XDrawLine uses 7 args; we push 1 arg here) ----
-    mov     rdi, qword[display_name]
-    mov     rsi, qword[window]
-    mov     rdx, qword[gc]
-    mov     ecx, dword[triangle_coord]                   ; x1 = Ax
-    mov     r8d, dword[triangle_coord + DWORD]           ; y1 = Ay
-    mov     r9d, dword[triangle_coord + 2*DWORD]         ; x2 = Bx
-
-    ; align for pushing 1 arg: current rsp%16 == 0, we want rsp%16 == 8 before push so after push becomes 0
-    sub     rsp, 8
-    push    qword [triangle_coord + 3*DWORD]             ; y2 = By
-    call    XDrawLine
-    add     rsp, 16            ; restore: 8 (sub) + 8 (push) = 16
-
-    ; ---- Ligne BC ----
-    mov     rdi, qword[display_name]
-    mov     rsi, qword[window]
-    mov     rdx, qword[gc]
-    mov     ecx, dword[triangle_coord + 2*DWORD]         ; x1 = Bx
-    mov     r8d, dword[triangle_coord + 3*DWORD]         ; y1 = By
-    mov     r9d, dword[triangle_coord + 4*DWORD]         ; x2 = Cx
-
-    sub     rsp, 8
-    push    qword [triangle_coord + 5*DWORD]             ; y2 = Cy
-    call    XDrawLine
-    add     rsp, 16
-
-    ; ---- Ligne CA ----
-    mov     rdi, qword[display_name]
-    mov     rsi, qword[window]
-    mov     rdx, qword[gc]
-    mov     ecx, dword[triangle_coord + 4*DWORD]         ; x1 = Cx
-    mov     r8d, dword[triangle_coord + 5*DWORD]         ; y1 = Cy
-    mov     r9d, dword[triangle_coord]                   ; x2 = Ax
-
-    sub     rsp, 8
-    push    qword [triangle_coord + DWORD]               ; y2 = Ay
-    call    XDrawLine
-    add     rsp, 16
-
-    ; ---- Remplissage: set color (registers only) ----
-    mov     rdi, qword[display_name]
-    mov     rsi, qword[gc]
-    mov     edx, dword[triangle_color]
-    call    XSetForeground
-
-    ; ---- Parcours du rectangle englobant ----
-    mov     r13d, dword[rectangle_coord + DWORD]         ; x = min_x
-    mov     r14d, dword[rectangle_coord + 3*DWORD]       ; y = min_y
-
-    mov     eax, dword[rectangle_coord]                  ; max_x
-    mov     dword [max_x_temp], eax
-    mov     eax, dword[rectangle_coord + 2*DWORD]        ; max_y
-    mov     dword [max_y_temp], eax
-
+    cmp r12, NB_TRIANGLES
+    jge .end_dessin             ; Si i >= NB_TRIANGLES, fin(end dessin)
+    
+    ;  Générer un triangle aléatoire
+    call generate_a_triangle
+    
+    ;  Générer une couleur aléatoire
+    call generate_rand_color
+    
+    ; Calculer le rectangle englobant
+    call calculate_rect_coord
+    
+    ; Déterminer le type de triangle (direct/indirect)
+    call determine_triangle_type
+    
+    ; Dessiner le contour en NOIR
+    ;  Définir la couleur noire
+    mov rdi, qword[display_name]
+    mov rsi, qword[gc]
+    mov rdx, 0x000000          ; Couleur noire
+    call XSetForeground
+    
+    ;  Dessiner côté AB
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, dword[triangle_coord]    ; Ax
+    mov r8d, dword[triangle_coord + DWORD]    ; Ay
+    mov r9d, dword[triangle_coord + 2 * DWORD]    ; Bx
+    push qword[triangle_coord + 3 * DWORD]       ; By (sur la pile) car le 7 e paramétre ne peut pas passer sur le registre 
+    call XDrawLine  ; trace la ligne AB 
+    add rsp, 8                           ; Nettoyer la pile en montant d'un étage dans la pile 
+    
+    ;  Dessiner côté BC meme principe que AB 
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, dword[triangle_coord + 2*DWORD]  ; Bx
+    mov r8d, dword[triangle_coord + 3*DWORD]  ; By
+    mov r9d, dword[triangle_coord + 4*DWORD]  ; Cx
+    push qword[triangle_coord + 5*DWORD]      ; Cy (sur la pile)
+    call XDrawLine
+    add rsp, 8
+    
+    ;  Dessiner côté CA
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, dword[triangle_coord + 4*DWORD]   ; Cx
+    mov r8d, dword[triangle_coord + 5*DWORD]   ; Cy
+    mov r9d, dword[triangle_coord]    ; Ax
+    push qword[triangle_coord + DWORD]        ; Ay (sur la pile)
+    call XDrawLine
+    add rsp, 8
+    
+    ;  Remplissage du triangle avec sa couleur
+    ;  Définir la couleur du triangle
+    mov rdi, qword[display_name]
+    mov rsi, qword[gc]
+    mov edx, dword[triangle_color]       ; Couleur aléatoire
+    call XSetForeground
+    
+    ;  Parcourir tous les points du rectangle englobant
+    ; rectangle_coord contient: [max_x, min_x, max_y, min_y]
+    mov r13d, dword[rectangle_coord + DWORD]  ; x = min_x (offset 4)
+    mov r14d, dword[rectangle_coord + 3 * DWORD] ; y = min_y (offset 12)
+    
+    ; Limites pour les boucles
+    mov eax, dword[rectangle_coord]       ; max_x (offset 0)
+    mov dword[max_x_temp], eax
+    mov eax, dword[rectangle_coord + 2 * DWORD]   ; max_y (offset 8)
+    mov dword[max_y_temp], eax
+    
 .y_loop:
-    mov     eax, dword [max_y_temp]
-    cmp     r14d, eax
-    jg      .next_triangle
-
-    mov     r13d, dword [rectangle_coord + DWORD]
-
+    mov eax, dword[max_y_temp]
+    cmp r14d, eax                         ; y <= max_y ?
+    jg .next_triangle                     ; Si y > max_y, triangle suivant
+    
+    ; Réinitialiser x pour chaque nouvelle ligne y
+    mov r13d, dword[rectangle_coord + DWORD]  ; x = min_x
+    
 .x_loop:
-    mov     eax, dword [max_x_temp]
-    cmp     r13d, eax
-    jg      .next_y
-
-    mov     r8, r13
-    mov     r9, r14
-    call    determine_point_inside_triangle
-
-    cmp     byte [is_inside], 1
-    jne     .skip_point
-
-    ; draw point (XDrawPoint uses registers only: 5 args)
-    mov     rdi, qword[display_name]
-    mov     rsi, qword[window]
-    mov     rdx, qword[gc]
-    mov     ecx, r13d
-    mov     r8d, r14d
-    call    XDrawPoint
-
+    mov eax, dword[max_x_temp]
+    cmp r13d, eax                         ; x <= max_x ?
+    jg .next_y                            ; Si x > max_x, ligne y suivante
+    
+    ; Vérifier si le point (x, y) est dans le triangle
+    mov r8, r13                           ; point_x = x
+    mov r9, r14                           ; point_y = y
+    call determine_point_inside_triangle
+    
+    cmp byte[is_inside], 1
+    jne .skip_point
+    
+    ; Le point est dans le triangle, on le dessine
+    mov rdi, qword[display_name]
+    mov rsi, qword[window]
+    mov rdx, qword[gc]
+    mov ecx, r13d                         ; x
+    mov r8d, r14d                         ; y
+    call XDrawPoint
+    
 .skip_point:
-    inc     r13d
-    jmp     .x_loop
-
+    inc r13d                              ; x++
+    jmp .x_loop
+    
 .next_y:
-    inc     r14d
-    jmp     .y_loop
-
+    inc r14d                              ; y++
+    jmp .y_loop
+    
 .next_triangle:
-    inc     r12
-    jmp     .triangle_loop
+    inc r12                               ; i++ (triangle suivant)
+    jmp .triangle_loop
 
 .end_dessin:
-    ; restore alignment & registers
-    add     rsp, 8              ; undo the sub rsp,8 done at prologue
-    pop     r15
-    pop     r14
-    pop     r13
-    pop     r12
+    ; Restauration des registres
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    
+    jmp flush
 
-    call    flush
-    ret
-
-
-; ============================
-; ========  F L U S H  =======
-; ============================
 flush:
-    mov     rdi, qword[display_name]
-    call    XFlush
-    ret
+    mov rdi,qword[display_name]
+    call XFlush
+    jmp boucle
+    mov rax,34
+    syscall
 
-
-; ============================
-; ======  C L O S E   ========
-; ============================
 closeDisplay:
-    mov     rax, qword[display_name]
-    mov     rdi, rax
+    mov     rax,qword[display_name]
+    mov     rdi,rax
     call    XCloseDisplay
-    xor     rdi, rdi
+    xor	    rdi,rdi
     call    exit
