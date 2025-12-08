@@ -184,8 +184,8 @@ calculate_rect_coord:
     ; init min/max using point A (Offset 0)
     mov r8d, dword[triangle_coord + 0]  ; max x 
     mov r9d, dword[triangle_coord + 0]  ; min x
-    mov r10d, dword[triangle_coord + 4] ; max y 
-    mov r11d, dword[triangle_coord + 4] ; min y
+    mov r10d, dword[triangle_coord + DWORD] ; max y 
+    mov r11d, dword[triangle_coord + DWORD] ; min y
 
     mov ebx, 0               ; Loop counter (EBX)
     
@@ -322,6 +322,8 @@ determine_triangle_type:
 ; - output : set is_left to 0 or 1
 ; =============================================================
 determine_side_of_point:
+    push r10
+    push r11
     push r12
     push r13
 
@@ -353,6 +355,8 @@ determine_side_of_point:
 
     pop r13
     pop r12
+    pop r11
+    pop r10
     ret
     
 ; =============================================================
