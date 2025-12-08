@@ -245,9 +245,9 @@ calculate_rect_coord:
     .store:
         ; store the results (r8d, r9d, r10d, r11d)
         mov dword[rectangle_coord], r8d   ; max_x
-        mov dword[rectangle_coord + 4], r9d   ; min_x
-        mov dword[rectangle_coord + 8], r10d  ; max_y
-        mov dword[rectangle_coord + 12], r11d ; min_y
+        mov dword[rectangle_coord + DWORD], r9d   ; min_x
+        mov dword[rectangle_coord + 2 * DWORD], r10d  ; max_y
+        mov dword[rectangle_coord + 3 * DWORD], r11d ; min_y
 
         pop rbx
         ret
@@ -258,11 +258,18 @@ calculate_rect_coord:
 ; - output : rax as ABx, rdx as ABy
 ; =============================================================
 calculate_vector_coord:
+    push rcx
+    push rdx
+    
     mov rax, rdx
     sub rax, rdi
-
-    mov rdx, rcx
-    sub rdx, rsi
+    
+    pop rdx  ; restore original rdx
+    mov r10, rdx
+    sub r10, rsi
+    mov rdx, r10
+    
+    pop rcx
     ret
 
 ; =============================================================
@@ -271,6 +278,11 @@ calculate_vector_coord:
 ; - output : rax
 ; =============================================================
 multiply_vector:
+    movsxd rdi, edi  ; sign-extend to 64-bit
+    movsxd rsi, esi
+    movsxd rdx, edx
+    movsxd rcx, ecx
+
     ; rdi x rcx = rdi
     imul rdi, rcx
     ; rdx x rsi = rdx
@@ -287,10 +299,10 @@ multiply_vector:
 ; =============================================================
 determine_triangle_type:
     ; get vector BA
-    mov rdi, [triangle_coord + 2 * DWORD]
-    mov rsi, [triangle_coord + 3 * DWORD]
-    mov rdx, [triangle_coord]
-    mov rcx, [triangle_coord + DWORD]
+    mov edi, [triangle_coord + 2 * DWORD]
+    mov esi, [triangle_coord + 3 * DWORD]
+    mov edx, [triangle_coord]
+    mov ecx, [triangle_coord + DWORD]
     call calculate_vector_coord
     ; BA_x : r8
     ; BA_y : r9
@@ -298,8 +310,8 @@ determine_triangle_type:
     mov r9, rdx
 
     ; get vector BC, rdi and rsi stays the same for B, only update for C
-    mov rdx, [triangle_coord + 4 * DWORD]
-    mov rcx, [triangle_coord + 5 * DWORD]
+    mov edx, [triangle_coord + 4 * DWORD]
+    mov ecx, [triangle_coord + 5 * DWORD]
     call calculate_vector_coord
     ; BC_x : r10
     ; BC_y : r11
@@ -554,10 +566,10 @@ dessin:
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, dword[triangle_coord + 0]    ; Ax
-    mov r8d, dword[triangle_coord + 4]    ; Ay
-    mov r9d, dword[triangle_coord + 8]    ; Bx
-    push qword[triangle_coord + 12]       ; By (sur la pile) car le 7 e paramétre ne peut pas passer sur le registre 
+    mov ecx, dword[triangle_coord]    ; Ax
+    mov r8d, dword[triangle_coord + DWORD]    ; Ay
+    mov r9d, dword[triangle_coord + 2 * DWORD]    ; Bx
+    push qword[triangle_coord + 3 * DWORD]       ; By (sur la pile) car le 7 e paramétre ne peut pas passer sur le registre 
     call XDrawLine  ; trace la ligne AB 
     add rsp, 8                           ; Nettoyer la pile en montant d'un étage dans la pile 
     
@@ -565,10 +577,10 @@ dessin:
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, dword[triangle_coord + 8]    ; Bx
-    mov r8d, dword[triangle_coord + 12]   ; By
-    mov r9d, dword[triangle_coord + 16]   ; Cx
-    push qword[triangle_coord + 20]       ; Cy (sur la pile)
+    mov ecx, dword[triangle_coord + 2*DWORD]  ; Bx
+    mov r8d, dword[triangle_coord + 3*DWORD]  ; By
+    mov r9d, dword[triangle_coord + 4*DWORD]  ; Cx
+    push qword[triangle_coord + 5*DWORD]      ; Cy (sur la pile)
     call XDrawLine
     add rsp, 8
     
@@ -576,10 +588,10 @@ dessin:
     mov rdi, qword[display_name]
     mov rsi, qword[window]
     mov rdx, qword[gc]
-    mov ecx, dword[triangle_coord + 16]   ; Cx
-    mov r8d, dword[triangle_coord + 20]   ; Cy
-    mov r9d, dword[triangle_coord + 0]    ; Ax
-    push qword[triangle_coord + 4]        ; Ay (sur la pile)
+    mov ecx, dword[triangle_coord + 4*DWORD]   ; Cx
+    mov r8d, dword[triangle_coord + 5*DWORD]   ; Cy
+    mov r9d, dword[triangle_coord]    ; Ax
+    push qword[triangle_coord + DWORD]        ; Ay (sur la pile)
     call XDrawLine
     add rsp, 8
     
@@ -592,13 +604,13 @@ dessin:
     
     ;  Parcourir tous les points du rectangle englobant
     ; rectangle_coord contient: [max_x, min_x, max_y, min_y]
-    mov r13d, dword[rectangle_coord + 4]  ; x = min_x (offset 4)
-    mov r14d, dword[rectangle_coord + 12] ; y = min_y (offset 12)
+    mov r13d, dword[rectangle_coord + DWORD]  ; x = min_x (offset 4)
+    mov r14d, dword[rectangle_coord + 3 * DWORD] ; y = min_y (offset 12)
     
     ; Limites pour les boucles
     mov eax, dword[rectangle_coord]       ; max_x (offset 0)
     mov dword[max_x_temp], eax
-    mov eax, dword[rectangle_coord + 8]   ; max_y (offset 8)
+    mov eax, dword[rectangle_coord + 2 * DWORD]   ; max_y (offset 8)
     mov dword[max_y_temp], eax
     
 .y_loop:
@@ -607,7 +619,7 @@ dessin:
     jg .next_triangle                     ; Si y > max_y, triangle suivant
     
     ; Réinitialiser x pour chaque nouvelle ligne y
-    mov r13d, dword[rectangle_coord + 4]  ; x = min_x
+    mov r13d, dword[rectangle_coord + DWORD]  ; x = min_x
     
 .x_loop:
     mov eax, dword[max_x_temp]
