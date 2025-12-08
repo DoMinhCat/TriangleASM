@@ -84,6 +84,10 @@ section .data
     is_left:  db  0
     is_inside:  db  0
 
+    ;Bamba's variables
+     max_x_temp: dd 0
+     max_y_temp: dd 
+
 section .text
 ;============================
 ;DEFINE FUNCTIONS HERE
