@@ -460,6 +460,8 @@ boucle: ; Boucle de gestion des événements
     cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
     je      dessin                        ; Passe à la phase de dessin
 
+    jmp boucle
+
 dessin:
     ; === BAMBA: CODE DE DESSIN DES TRIANGLES ===
     push r12
