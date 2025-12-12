@@ -457,8 +457,8 @@ boucle: ; Boucle de gestion des événements
     cmp     dword[event], KeyPress        ; Si une touche est pressée
     je      closeDisplay                  ; Quitte le programme
 
-    ;cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
-    ;je      dessin                        ; Passe à la phase de dessin
+    cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
+    je      dessin                        ; Passe à la phase de dessin
 
     jmp boucle
 
