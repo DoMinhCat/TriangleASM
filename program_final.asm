@@ -93,7 +93,7 @@ section .text
 ; MODULE PACO
 ; =============================================================
 ; =============================================================
-;  FONCTION 1 : generate_rand_nb(max)
+;  FONCTION 1 : generate_rand_nb(rdi)
 ; =============================================================
 generate_rand_nb:
     push rbx
@@ -186,10 +186,10 @@ calculate_rect_coord:
         jl .set_max_x
         
     .cmp_min_x:
-        cmp r9d, dword[triangle_coord + rcx] ; Compare current min_x to next_x (offset in RCX)
+        cmp r9d, dword[triangle_coord + rcx]
         jg .set_min_x
     .cmp_max_y:
-        cmp r10d, dword[triangle_coord + rdx] ; Compare current max_y to next_y (offset in RDX)
+        cmp r10d, dword[triangle_coord + rdx]
         jl .set_max_y     
     .cmp_min_y:
         cmp r11d, dword[triangle_coord + rdx] 
@@ -277,8 +277,6 @@ determine_triangle_type:
 
 ; =============================================================
 ; FUNCTION 5: check if the point is on the left or on the right of the vect AB
-; - input : rdi as Ax, rsi as Ay, rdx as Bx, rcx as By, r8 as point_x, r9 as point_y
-; - output : set is_left to 0 or 1
 ; =============================================================
 determine_side_of_point:
     push r10
