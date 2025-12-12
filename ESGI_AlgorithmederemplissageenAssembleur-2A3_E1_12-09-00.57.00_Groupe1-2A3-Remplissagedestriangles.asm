@@ -39,7 +39,7 @@ extern exit
 %define	WIDTH 400
 %define HEIGHT 400
 
-%define NB_TRIANGLES  2
+%define NB_TRIANGLES  1
 
 global main
 
@@ -459,9 +459,6 @@ boucle: ; Boucle de gestion des événements
 
     cmp     dword[event], ConfigureNotify ; Si l'événement est ConfigureNotify (ex: redimensionnement)
     je      dessin                        ; Passe à la phase de dessin
-
-    jmp     boucle                        ; Sinon, recommence la boucle
-
 
 dessin:
     ; === BAMBA: CODE DE DESSIN DES TRIANGLES ===
